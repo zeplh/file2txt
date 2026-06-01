@@ -24,6 +24,7 @@
             --btn-primary-hover: #2563eb;
             --btn-warning-bg: #fef9c3;
             --btn-warning-border: #eab308;
+            --btn-warning-text: #854d0e;
             --badge-bg: #e2e8f0;
             --file-grid-bg: #ffffff;
             --file-item-border: #f1f5f9;
@@ -50,6 +51,7 @@
                 --btn-primary-hover: #60a5fa;
                 --btn-warning-bg: #713f12;
                 --btn-warning-border: #854d0e;
+                --btn-warning-text: #fdba74;
                 --badge-bg: #475569;
                 --file-grid-bg: #0f172a;
                 --file-item-border: #334155;
@@ -154,10 +156,7 @@
         .btn-warning {
             background: var(--btn-warning-bg);
             border-color: var(--btn-warning-border);
-            color: #854d0e;
-        }
-        body.dark .btn-warning {
-            color: #fdba74;
+            color: var(--btn-warning-text);
         }
 
         .file-list-header {
@@ -655,7 +654,7 @@
                             </div>
                         </div>
                         <div class="file-actions">
-                            <button class="icon-btn rename-btn" data-id="${item.id}" title="修改路径">✎ 改名</button>
+                            <button class="icon-btn rename-btn" data-id="${item.id}" title="修改路径">✎</button>
                             <button class="icon-btn remove-btn" data-id="${item.id}" title="移除">x</button>
                         </div>
                     </div>
@@ -792,7 +791,7 @@
         packAndSaveBtn.addEventListener('click', packAndSave);
         clearLogBtn.addEventListener('click', clearLog);
 
-        addLog("工具已启动");
+        addLog("工具已启动 | 默认尝试所有文件作为文本读取 | 失败的文件可点击「重试失败文件」重新解析 | 打包时失败文件仅保留路径提示");
     })();
 </script>
 </body>
