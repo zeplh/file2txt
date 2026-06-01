@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
+    <title>文本打包工具 | 合并文本文件供AI使用</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        /* 浅色模式 */
+        :root {
+            --bg-body: #f1f5f9;
+            --bg-card: #ffffff;
+            --text-primary: #0f172a;
+            --text-secondary: #475569;
+            --border: #e2e8f0;
+            --btn-bg: #f8fafc;
+            --btn-border: #cbd5e1;
+            --btn-primary-bg: #3b82f6;
+            --btn-primary-hover: #2563eb;
+            --btn-warning-bg: #fef9c3;
+            --btn-warning-border: #eab308;
+            --badge-bg: #e2e8f0;
+            --file-grid-bg: #ffffff;
+            --file-item-border: #f1f5f9;
+            --status-success-bg: #dcfce7;
+            --status-success-text: #15803d;
+            --status-error-bg: #fee2e2;
+            --status-error-text: #b91c1c;
+            --log-bg: #0f172a;
+            --log-text: #cbd5e6;
+            --log-border: #1e293b;
+        }
+
+        /* 深色模式自动跟随系统 */
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg-body: #0f172a;
+                --bg-card: #1e293b;
+                --text-primary: #f1f5f9;
+                --text-secondary: #94a3b8;
+                --border: #334155;
+                --btn-bg: #334155;
+                --btn-border: #475569;
+                --btn-primary-bg: #3b82f6;
+                --btn-primary-hover: #60a5fa;
+                --btn-warning-bg: #713f12;
+                --btn-warning-border: #854d0e;
+                --badge-bg: #475569;
+                --file-grid-bg: #0f172a;
+                --file-item-border: #334155;
+                --status-success-bg: #14532d;
+                --status-success-text: #86efac;
+                --status-error-bg: #7f1d1d;
+                --status-error-text: #fca5a5;
+                --log-bg: #020617;
+                --log-text: #cbd5e6;
+                --log-border: #1e293b;
+            }
+        }
+
+        body {
+            background: var(--bg-body);
+            margin: 0;
+            padding: 16px 12px;
+            color: var(--text-primary);
+            transition: background 0.2s, color 0.2s;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .card {
+            background: var(--bg-card);
+            border-radius: 20px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            padding: 18px 16px;
+            margin-bottom: 20px;
+            border: 1px solid var(--border);
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin: 0 0 4px 0;
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            background-clip: text;
+            -webkit-background-clip: text;
+            color: transparent;
+        }
+
+        .sub {
+            color: var(--text-secondary);
+            border-left: 3px solid #3b82f6;
+            padding-left: 12px;
+            margin: 6px 0 12px 0;
+            font-size: 0.8rem;
+        }
+
+        .toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 16px;
+            align-items: center;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 14px;
+        }
+
+        .btn {
+            background: var(--btn-bg);
+            border: 1px solid var(--btn-border);
+            padding: 6px 14px;
+            border-radius: 40px;
+            font-weight: 500;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: 0.2s;
+            color: var(--text-primary);
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            white-space: nowrap;
+        }
+
+        .btn-primary {
+            background: var(--btn-primary-bg);
+            border-color: var(--btn-primary-bg);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--btn-primary-hover);
+            transform: translateY(-1px);
+        }
+
+        .btn-outline {
+            border: 1px solid var(--btn-border);
+            background: var(--btn-bg);
+        }
+
+        .btn-outline:hover {
+            background: var(--btn-primary-bg);
+            border-color: var(--btn-primary-bg);
+            color: white;
+        }
+
+        .btn-warning {
+            background: var(--btn-warning-bg);
+            border-color: var(--btn-warning-border);
+            color: #854d0e;
+        }
+        body.dark .btn-warning {
+            color: #fdba74;
+        }
+
+        .file-list-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            margin: 12px 0 10px 0;
+            gap: 8px;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .file-stats {
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            background: var(--bg-body);
+            padding: 4px 10px;
+            border-radius: 30px;
+            margin: 8px 0 12px 0;
+            display: inline-block;
+        }
+
+        .file-grid {
+            max-height: 460px;
+            overflow-y: auto;
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            background: var(--file-grid-bg);
+        }
+
+        .file-item {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--file-item-border);
+            font-size: 0.8rem;
+            font-family: monospace;
+            gap: 8px;
+        }
+
+        .file-item:last-child {
+            border-bottom: none;
+        }
+
+        .file-info {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            flex: 3;
+            min-width: 150px;
+        }
+
+        .file-path {
+            font-weight: 500;
+            word-break: break-all;
+            color: var(--text-primary);
+        }
+
+        .file-meta {
+            font-size: 0.65rem;
+            color: var(--text-secondary);
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .file-status {
+            font-size: 0.65rem;
+            font-weight: 500;
+            padding: 2px 6px;
+            border-radius: 30px;
+            display: inline-block;
+        }
+
+        .status-success {
+            background: var(--status-success-bg);
+            color: var(--status-success-text);
+        }
+
+        .status-error {
+            background: var(--status-error-bg);
+            color: var(--status-error-text);
+        }
+
+        .file-actions {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .icon-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 0.85rem;
+            padding: 4px 8px;
+            border-radius: 20px;
+            color: var(--text-secondary);
+            transition: 0.1s;
+            font-weight: normal;
+        }
+
+        .icon-btn:hover {
+            background: var(--border);
+        }
+
+        .empty-list {
+            padding: 30px;
+            text-align: center;
+            color: var(--text-secondary);
+        }
+
+        .action-bar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 16px;
+        }
+
+        .format-select {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            padding: 6px 12px;
+            border-radius: 40px;
+            font-weight: 500;
+            color: var(--text-primary);
+            font-size: 0.8rem;
+        }
+
+        .log-area {
+            background: var(--log-bg);
+            color: var(--log-text);
+            border-radius: 0;
+            padding: 0;
+            font-family: monospace;
+            font-size: 0.7rem;
+            max-height: 200px;
+            overflow-y: auto;
+            margin-top: 12px;
+            border: 1px solid var(--border);
+        }
+
+        .log-line {
+            padding: 5px 10px;
+            border-bottom: 1px solid var(--log-border);
+            white-space: pre-wrap;
+            word-break: break-word;
+            font-family: monospace;
+        }
+
+        footer {
+            text-align: center;
+            font-size: 0.65rem;
+            color: var(--text-secondary);
+            margin-top: 20px;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        @media (max-width: 640px) {
+            body {
+                padding: 12px 8px;
+            }
+            .card {
+                padding: 14px 12px;
+            }
+            .toolbar {
+                gap: 8px;
+            }
+            .btn {
+                padding: 5px 12px;
+                font-size: 0.75rem;
+            }
+            .file-item {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            .file-actions {
+                align-self: flex-end;
+            }
+            .action-bar {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .action-bar > div {
+                justify-content: space-between;
+            }
+            h1 {
+                font-size: 1.3rem;
+            }
+            .file-list-header {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .header-left {
+                justify-content: space-between;
+            }
+            .btn, .icon-btn {
+                white-space: nowrap;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="card">
+        <h1>文本聚合打包器 · 为AI准备上下文</h1>
+        <div class="sub">支持所有文本格式（自动尝试读取）| 解析ZIP | 可手动修改文件路径 | 失败文件保留路径提示</div>
+
+        <div class="toolbar">
+            <button class="btn btn-outline" id="addFilesBtn">+ 添加文件</button>
+            <button class="btn btn-outline" id="addFolderBtn">+ 添加文件夹</button>
+            <button class="btn btn-outline" id="addZipBtn">+ 添加ZIP包</button>
+        </div>
+
+        <div class="file-list-header">
+            <div class="header-left">
+                <strong>待打包文件清单</strong>
+                <button class="btn btn-warning" id="clearAllBtn" style="padding: 4px 12px;">清空全部</button>
+                <button class="btn btn-primary" id="retryAllFailedBtn" style="padding: 4px 12px;">重试失败文件</button>
+            </div>
+        </div>
+
+        <div id="fileListContainer" class="file-grid">
+            <div class="empty-list">点击上方按钮添加文件、文件夹或ZIP</div>
+        </div>
+
+        <div class="file-stats" id="fileStats" style="margin: 12px 0 8px 0;">0 个文件 (成功:0 / 失败:0)</div>
+
+        <div class="action-bar">
+            <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+                <span>输出格式:</span>
+                <select id="outputFormat" class="format-select">
+                    <option value="txt">纯文本 .txt</option>
+                    <option value="md">Markdown .md</option>
+                </select>
+                <button class="btn btn-primary" id="packAndSaveBtn">打包并保存</button>
+            </div>
+            <span style="font-size: 0.7rem;">失败文件仅保留路径提示，不输出内容</span>
+        </div>
+    </div>
+
+    <div class="card" style="padding: 0; overflow: hidden;">
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--border);">
+            <strong>处理日志 & 失败信息</strong>
+            <button id="clearLogBtn" class="btn" style="padding: 2px 12px;">清空日志</button>
+        </div>
+        <div id="logPanel" class="log-area">
+            <div class="log-line">[就绪] 添加文件或ZIP，将自动尝试读取为文本。</div>
+        </div>
+    </div>
+    <footer>每个文件前显示完整路径 | 读取失败的文件会跳过内容并在最终输出中标注 | 支持修改路径便于AI识别</footer>
+</div>
+
+<script>
+    (function(){
+        let filesData = [];      // { id, path, content, status, errorMsg, sourceType, fileObj (仅普通文件保留) }
+        let nextId = 1;
+
+        const fileListContainer = document.getElementById('fileListContainer');
+        const fileStatsSpan = document.getElementById('fileStats');
+        const addFilesBtn = document.getElementById('addFilesBtn');
+        const addFolderBtn = document.getElementById('addFolderBtn');
+        const addZipBtn = document.getElementById('addZipBtn');
+        const clearAllBtn = document.getElementById('clearAllBtn');
+        const retryAllFailedBtn = document.getElementById('retryAllFailedBtn');
+        const packAndSaveBtn = document.getElementById('packAndSaveBtn');
+        const outputFormatSelect = document.getElementById('outputFormat');
+        const logPanel = document.getElementById('logPanel');
+        const clearLogBtn = document.getElementById('clearLogBtn');
+
+        function addLog(message, isError = false) {
+            const logDiv = document.createElement('div');
+            logDiv.className = 'log-line';
+            logDiv.style.color = isError ? '#fca5a5' : '#bbf7d0';
+            logDiv.innerHTML = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logPanel.appendChild(logDiv);
+            logDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            if (logPanel.children.length > 200) {
+                while (logPanel.children.length > 180) logPanel.removeChild(logPanel.firstChild);
+            }
+        }
+
+        function clearLog() {
+            logPanel.innerHTML = '<div class="log-line">[日志] 已清空</div>';
+            addLog("日志面板已重置");
+        }
+
+        function readFileAsText(file) {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = (e) => resolve({ content: e.target.result, error: null });
+                reader.onerror = () => resolve({ content: null, error: `读取失败: ${reader.error?.message || '未知错误'}` });
+                reader.readAsText(file, 'UTF-8');
+            });
+        }
+
+        function addFileEntry(path, content, status, errorMsg, sourceType, fileObj = null) {
+            filesData.push({
+                id: nextId++,
+                path: path,
+                content: content,
+                status: status,
+                errorMsg: errorMsg,
+                sourceType: sourceType,
+                fileObj: fileObj
+            });
+            renderFileList();
+        }
+
+        async function reparseFile(fileEntry) {
+            if (!fileEntry.fileObj) {
+                addLog(`无法重新解析: 缺少原始文件对象`, true);
+                return false;
+            }
+            addLog(`重新读取: ${fileEntry.path}`);
+            const { content, error } = await readFileAsText(fileEntry.fileObj);
+            if (error || content === null) {
+                fileEntry.status = 'error';
+                fileEntry.errorMsg = error || '内容为空或无法解码';
+                fileEntry.content = null;
+                addLog(`重新解析失败: ${fileEntry.path} , ${error}`, true);
+                return false;
+            } else {
+                fileEntry.status = 'success';
+                fileEntry.errorMsg = '';
+                fileEntry.content = content;
+                addLog(`重新解析成功: ${fileEntry.path} (${(content.length/1024).toFixed(1)} KB)`);
+                return true;
+            }
+        }
+
+        async function retryAllFailed() {
+            const failedFiles = filesData.filter(f => f.status === 'error' && f.fileObj);
+            if (failedFiles.length === 0) {
+                addLog(`没有可重试的失败文件`);
+                return;
+            }
+            addLog(`开始重试 ${failedFiles.length} 个失败文件...`);
+            let successCount = 0;
+            for (let file of failedFiles) {
+                const ok = await reparseFile(file);
+                if (ok) successCount++;
+            }
+            renderFileList();
+            addLog(`重试完成: ${successCount}/${failedFiles.length} 个文件恢复成功`);
+        }
+
+        async function processFileList(fileList, basePathProvider, sourceType = 'file') {
+            for (let i = 0; i < fileList.length; i++) {
+                const file = fileList[i];
+                let displayPath = basePathProvider(file, i);
+                addLog(`尝试读取: ${displayPath}`);
+                const { content, error } = await readFileAsText(file);
+                if (error || content === null) {
+                    addFileEntry(displayPath, null, 'error', error || '无法解码为文本', sourceType, file);
+                    addLog(`读取失败: ${displayPath} , 原因: ${error || '二进制或编码错误'} , 已跳过`, true);
+                } else {
+                    addFileEntry(displayPath, content, 'success', '', sourceType, file);
+                    addLog(`读取成功: ${displayPath} (${(content.length/1024).toFixed(1)} KB)`);
+                }
+            }
+        }
+
+        async function onAddZip() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.zip';
+            input.onchange = async (e) => {
+                const zipFile = e.target.files[0];
+                if (!zipFile) return;
+                addLog(`正在解析ZIP: ${zipFile.name} ...`);
+                try {
+                    const arrayBuffer = await zipFile.arrayBuffer();
+                    const zip = await JSZip.loadAsync(arrayBuffer);
+                    let processedCount = 0;
+                    const allEntries = Object.entries(zip.files);
+                    for (let [relativePath, zipEntry] of allEntries) {
+                        if (zipEntry.dir) continue;
+                        const displayPath = `[ZIP] ${relativePath}`;
+                        addLog(`从ZIP读取: ${relativePath}`);
+                        try {
+                            const content = await zipEntry.async('string');
+                            if (content !== undefined && content !== null) {
+                                addFileEntry(displayPath, content, 'success', '', 'zip', null);
+                                addLog(`ZIP提取成功: ${relativePath} (${(content.length/1024).toFixed(1)} KB)`);
+                                processedCount++;
+                            } else {
+                                throw new Error('内容为空');
+                            }
+                        } catch (err) {
+                            addFileEntry(displayPath, null, 'error', `解析异常: ${err.message}`, 'zip', null);
+                            addLog(`ZIP文件读取失败: ${relativePath} , 错误: ${err.message} , 已跳过`, true);
+                        }
+                    }
+                    addLog(`ZIP处理完成: 成功 ${processedCount} 个，失败 ${allEntries.length - processedCount - (Object.keys(zip.files).filter(k=>zip.files[k].dir).length)} 个`);
+                } catch (err) {
+                    addLog(`解析ZIP失败: ${err.message}`, true);
+                }
+            };
+            input.click();
+        }
+
+        async function onAddFiles() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.multiple = true;
+            input.onchange = async (e) => {
+                const files = Array.from(e.target.files);
+                if (files.length === 0) return;
+                addLog(`正在添加 ${files.length} 个普通文件...`);
+                await processFileList(files, (file) => `📁 / ${file.name}`, 'file');
+            };
+            input.click();
+        }
+
+        async function onAddFolder() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.webkitdirectory = true;
+            input.multiple = true;
+            input.onchange = async (e) => {
+                const files = Array.from(e.target.files);
+                if (files.length === 0) return;
+                addLog(`添加文件夹，共 ${files.length} 个文件（保留相对路径）`);
+                await processFileList(files, (file) => file.webkitRelativePath || file.name, 'file');
+            };
+            input.click();
+        }
+
+        function clearAll() {
+            if (filesData.length > 0) {
+                filesData = [];
+                nextId = 1;
+                renderFileList();
+                addLog(`已清空全部文件列表`);
+            } else {
+                addLog(`列表已空`);
+            }
+        }
+
+        async function renameFilePath(id) {
+            const file = filesData.find(f => f.id === id);
+            if (!file) return;
+            const newPath = prompt("修改文件路径 (可包含目录结构，方便AI识别):", file.path);
+            if (newPath && newPath.trim() !== "") {
+                file.path = newPath.trim();
+                renderFileList();
+                addLog(`已修改路径: ${file.path}`);
+            }
+        }
+
+        function removeFileById(id) {
+            filesData = filesData.filter(f => f.id !== id);
+            renderFileList();
+            addLog(`已移除文件 ID:${id}`);
+        }
+
+        function renderFileList() {
+            if (filesData.length === 0) {
+                fileListContainer.innerHTML = '<div class="empty-list">暂无文件，请添加上方文件或ZIP</div>';
+                fileStatsSpan.innerText = `0 个文件 (成功:0 / 失败:0)`;
+                return;
+            }
+            let successCount = filesData.filter(f => f.status === 'success').length;
+            let failedCount = filesData.filter(f => f.status === 'error').length;
+            fileStatsSpan.innerText = `${filesData.length} 个文件 (成功:${successCount} / 失败:${failedCount})`;
+
+            let html = '';
+            for (let item of filesData) {
+                let statusClass = item.status === 'success' ? 'status-success' : 'status-error';
+                let statusText = item.status === 'success' ? '成功' : `失败: ${item.errorMsg || '未知错误'}`;
+
+                html += `
+                    <div class="file-item" data-id="${item.id}">
+                        <div class="file-info">
+                            <div class="file-path">${escapeHtml(item.path)}</div>
+                            <div class="file-meta">
+                                <span class="file-status ${statusClass}">${escapeHtml(statusText)}</span>
+                                <span>来源: ${item.sourceType === 'zip' ? 'ZIP压缩包' : '本地文件'}</span>
+                            </div>
+                        </div>
+                        <div class="file-actions">
+                            <button class="icon-btn rename-btn" data-id="${item.id}" title="修改路径">✎ 改名</button>
+                            <button class="icon-btn remove-btn" data-id="${item.id}" title="移除">x</button>
+                        </div>
+                    </div>
+                `;
+            }
+            fileListContainer.innerHTML = html;
+
+            document.querySelectorAll('.rename-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const id = parseInt(btn.getAttribute('data-id'));
+                    renameFilePath(id);
+                });
+            });
+            document.querySelectorAll('.remove-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const id = parseInt(btn.getAttribute('data-id'));
+                    removeFileById(id);
+                });
+            });
+        }
+
+        function escapeHtml(str) {
+            return str.replace(/[&<>]/g, function(m) {
+                if (m === '&') return '&amp;';
+                if (m === '<') return '&lt;';
+                if (m === '>') return '&gt;';
+                return m;
+            });
+        }
+
+        // 生成最终打包内容：成功文件输出完整内容，失败文件仅输出路径和失败提示
+        function generateMergedContent(outputType) {
+            const successFiles = filesData.filter(f => f.status === 'success' && f.content !== null);
+            const failedFiles = filesData.filter(f => f.status === 'error');
+            
+            let parts = [];
+            // 头部简短AI提示
+            const toolNote = outputType === 'md' 
+                ? `> **工具提示**：本文档由「文本聚合打包器」生成。部分文件可能读取失败（详见下文），AI若需要原始文件可向用户索取。\n\n`
+                : `[工具提示] 本文档由「文本聚合打包器」生成。部分文件可能读取失败，AI若需要原始文件可向用户索取。\n\n`;
+            
+            const header = outputType === 'md'
+                ? `# 文本聚合包 - 生成于 ${new Date().toLocaleString()}\n# 有效文件: ${successFiles.length} | 失败文件: ${failedFiles.length}\n\n${toolNote}`
+                : `================== 文本聚合包 ==================\n生成时间: ${new Date().toLocaleString()}\n有效文件数: ${successFiles.length} | 失败文件数: ${failedFiles.length}\n\n${toolNote}`;
+            parts.push(header);
+
+            // 输出成功文件
+            for (let file of successFiles) {
+                const sep = outputType === 'md' ? `---` : `========================================`;
+                if (outputType === 'md') {
+                    parts.push(`## 文件: ${escapeMarkdown(file.path)}\n`);
+                    parts.push(`> 路径: \`${file.path}\`\n`);
+                    let lang = '';
+                    const match = file.path.match(/\.([a-zA-Z0-9]+)$/);
+                    if (match) {
+                        const ext = match[1].toLowerCase();
+                        if (['js','ts','jsx','tsx','json','html','css','xml','yaml','yml','sql','py','java','c','cpp','sh','md'].includes(ext)) lang = ext;
+                        else if (ext === 'txt') lang = 'text';
+                    }
+                    parts.push(`\`\`\`${lang}\n${file.content}\n\`\`\`\n`);
+                } else {
+                    parts.push(`${sep}\n`);
+                    parts.push(`[文件路径]: ${file.path}\n`);
+                    const dir = file.path.substring(0, file.path.lastIndexOf('/') !== -1 ? file.path.lastIndexOf('/') : 0) || '根目录';
+                    parts.push(`[所在目录]: ${dir}\n`);
+                    parts.push(`[文件内容]:\n${file.content}\n`);
+                    parts.push(`\n${sep} 文件结束 ${sep}\n\n`);
+                }
+            }
+
+            // 输出失败文件（仅路径和错误说明，无内容）
+            if (failedFiles.length > 0) {
+                const failSep = outputType === 'md' ? `## 读取失败的文件` : `================== 读取失败的文件 ==================`;
+                parts.push(failSep);
+                for (let file of failedFiles) {
+                    if (outputType === 'md') {
+                        parts.push(`### ❌ ${escapeMarkdown(file.path)}\n`);
+                        parts.push(`- **状态**: 读取失败\n`);
+                        parts.push(`- **原因**: ${escapeMarkdown(file.errorMsg || '未知错误')}\n`);
+                        parts.push(`- **建议**: AI如需此文件内容，可联系用户提供原始文件。\n`);
+                    } else {
+                        parts.push(`\n[失败文件路径]: ${file.path}`);
+                        parts.push(`[失败原因]: ${file.errorMsg || '未知错误'}`);
+                        parts.push(`[建议]: AI如需此文件内容，可联系用户提供原始文件。`);
+                        parts.push(`----------------------------------------`);
+                    }
+                }
+                parts.push(outputType === 'md' ? `\n` : `\n`);
+            }
+
+            if (outputType === 'md') {
+                parts.push(`\n---\n*由文本打包工具自动生成 | 失败文件已标注，可按需向用户索取*`);
+            } else {
+                parts.push(`================== 打包结束 ==================`);
+            }
+            return parts.join('\n');
+        }
+
+        function escapeMarkdown(text) {
+            return text.replace(/([#`*_\[\]()~>|\\])/g, '\\$1');
+        }
+
+        async function packAndSave() {
+            if (filesData.length === 0) {
+                addLog(`没有文件，无法打包`, true);
+                return;
+            }
+            const successCount = filesData.filter(f => f.status === 'success').length;
+            const failedCount = filesData.filter(f => f.status === 'error').length;
+            if (successCount === 0 && failedCount === 0) {
+                addLog(`没有有效文件`, true);
+                return;
+            }
+            const format = outputFormatSelect.value;
+            addLog(`开始打包，格式: ${format.toUpperCase()}, 成功:${successCount}, 失败:${failedCount}`);
+            const merged = generateMergedContent(format);
+            if (!merged) return;
+            const blob = new Blob([merged], { type: 'text/plain;charset=utf-8' });
+            const link = document.createElement('a');
+            const timestamp = new Date().toISOString().slice(0,19).replace(/:/g, '-');
+            const filename = `ai_context_pack_${timestamp}.${format}`;
+            link.href = URL.createObjectURL(blob);
+            link.download = filename;
+            link.click();
+            URL.revokeObjectURL(link.href);
+            addLog(`打包完成！已下载 ${filename}`);
+        }
+
+        addFilesBtn.addEventListener('click', onAddFiles);
+        addFolderBtn.addEventListener('click', onAddFolder);
+        addZipBtn.addEventListener('click', onAddZip);
+        clearAllBtn.addEventListener('click', clearAll);
+        retryAllFailedBtn.addEventListener('click', retryAllFailed);
+        packAndSaveBtn.addEventListener('click', packAndSave);
+        clearLogBtn.addEventListener('click', clearLog);
+
+        addLog("工具已启动");
+    })();
+</script>
+</body>
+</html>
