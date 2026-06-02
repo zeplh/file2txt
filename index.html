@@ -35,6 +35,7 @@
             --log-bg: #0f172a;
             --log-text: #cbd5e6;
             --log-border: #1e293b;
+            --input-bg: #ffffff;
         }
 
         /* 深色模式自动跟随系统 */
@@ -62,6 +63,7 @@
                 --log-bg: #020617;
                 --log-text: #cbd5e6;
                 --log-border: #1e293b;
+                --input-bg: #0f172a;
             }
         }
 
@@ -286,7 +288,18 @@
             align-items: center;
             margin-top: 16px;
         }
-
+        .action-left-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            flex: 1;
+        }
+        .action-row {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
         .format-select {
             background: var(--bg-card);
             border: 1px solid var(--border);
@@ -295,6 +308,38 @@
             font-weight: 500;
             color: var(--text-primary);
             font-size: 0.8rem;
+        }
+
+        .filename-input {
+            background: var(--input-bg);
+            border: 1px solid var(--border);
+            padding: 6px 12px;
+            border-radius: 40px;
+            font-size: 0.8rem;
+            color: var(--text-primary);
+            width: 160px;
+        }
+
+        .log-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .log-control {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+        .auto-scroll-label {
+            font-size: 0.7rem;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            cursor: pointer;
         }
 
         .log-area {
@@ -306,7 +351,6 @@
             font-size: 0.7rem;
             max-height: 200px;
             overflow-y: auto;
-            margin-top: 12px;
             border: 1px solid var(--border);
         }
 
@@ -355,7 +399,7 @@
                 flex-direction: column;
                 align-items: stretch;
             }
-            .action-bar > div {
+            .action-row {
                 justify-content: space-between;
             }
             h1 {
@@ -370,6 +414,9 @@
             }
             .btn, .icon-btn {
                 white-space: nowrap;
+            }
+            .filename-input {
+                width: 140px;
             }
         }
     </style>
@@ -401,22 +448,33 @@
         <div class="file-stats" id="fileStats" style="margin: 12px 0 8px 0;">0 个文件 (成功:0 / 失败:0)</div>
 
         <div class="action-bar">
-            <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
-                <span>输出格式:</span>
-                <select id="outputFormat" class="format-select">
-                    <option value="txt">纯文本 .txt</option>
-                    <option value="md">Markdown .md</option>
-                </select>
-                <button class="btn btn-primary" id="packAndSaveBtn">打包并保存</button>
+            <div class="action-left-group">
+                <div class="action-row">
+                    <span>输出格式:</span>
+                    <select id="outputFormat" class="format-select">
+                        <option value="txt">纯文本 .txt</option>
+                        <option value="md">Markdown .md</option>
+                    </select>
+                </div>
+                <div class="action-row">
+                    <span>文件名:</span>
+                    <input type="text" id="customFilename" class="filename-input" value="ai_context_pack" placeholder="不含后缀">
+                    <button class="btn btn-primary" id="packAndSaveBtn">打包并保存</button>
+                </div>
             </div>
             <span style="font-size: 0.7rem;">失败文件仅保留路径提示，不输出内容</span>
         </div>
     </div>
 
     <div class="card" style="padding: 0; overflow: hidden;">
-        <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--border);">
+        <div class="log-header">
             <strong>处理日志 & 失败信息</strong>
-            <button id="clearLogBtn" class="btn" style="padding: 2px 12px;">清空日志</button>
+            <div class="log-control">
+                <label class="auto-scroll-label">
+                    <input type="checkbox" id="autoScrollLogCheckbox" checked> 自动滚动
+                </label>
+                <button id="clearLogBtn" class="btn" style="padding: 2px 12px;">清空日志</button>
+            </div>
         </div>
         <div id="logPanel" class="log-area">
             <div class="log-line">[就绪] 添加文件或ZIP，将自动尝试读取为文本。</div>
@@ -427,9 +485,88 @@
 
 <script>
     (function(){
-        let filesData = [];      // { id, path, content, status, errorMsg, sourceType, fileObj (仅普通文件保留) }
+        let filesData = [];      // { id, path, content, status, errorMsg, sourceType, fileObj (仅普通文件保留), originalPathForDedup }
         let nextId = 1;
 
+        // 文本扩展名白名单（用于二进制检测）
+        const TEXT_EXTENSIONS = new Set([
+            'txt', 'md', 'markdown', 'mdown', 'mkd', 'text', 'readme', 'log',
+            'js', 'ts', 'jsx', 'tsx', 'json', 'html', 'htm', 'css', 'scss', 'sass', 'less',
+            'xml', 'svg', 'rss', 'atom', 'yaml', 'yml', 'toml', 'ini', 'cfg', 'conf',
+            'py', 'java', 'c', 'cpp', 'h', 'hpp', 'cs', 'go', 'rs', 'swift', 'kt', 'scala',
+            'rb', 'php', 'pl', 'lua', 'sql', 'sh', 'bash', 'zsh', 'fish', 'ps1', 'bat',
+            'r', 'm', 'jl', 'tex', 'bib', 'sty', 'cls', 'rst', 'adoc', 'asciidoc', 'org',
+            'wiki', 'mediawiki', 'diff', 'patch', 'csv', 'tsv', 'vtt', 'srt'
+        ]);
+
+        // 检测文件是否为文本内容（基于扩展名 + 内容启发式）
+        function isLikelyTextFile(fileName, content) {
+            const ext = fileName.split('.').pop().toLowerCase();
+            if (TEXT_EXTENSIONS.has(ext)) return true;
+            // 启发式：内容不为空且不包含过多空字节或乱码替换字符
+            if (!content || content.length === 0) return false;
+            // 检查前 5000 个字符
+            const sample = content.substring(0, 5000);
+            // 包含空字节几乎肯定是二进制
+            if (sample.includes('\u0000')) return false;
+            // 替换字符 � 过多 (超过 2%)
+            let replacementCount = (sample.match(/\uFFFD/g) || []).length;
+            if (replacementCount > sample.length * 0.02) return false;
+            // 非打印字符控制字符（除换行回车制表符外）比例过高则拒绝
+            let controlCount = 0;
+            for (let i = 0; i < Math.min(sample.length, 1000); i++) {
+                let code = sample.charCodeAt(i);
+                if (code < 32 && code !== 9 && code !== 10 && code !== 13) controlCount++;
+            }
+            if (controlCount > 50) return false;
+            return true;
+        }
+
+        // 大文件阈值 (50MB)
+        const LARGE_FILE_THRESHOLD = 50 * 1024 * 1024;
+        const LARGE_ZIP_THRESHOLD = 100 * 1024 * 1024;
+
+        // 去重：基于最终显示路径进行重复检测
+        function isDuplicatePath(newPath) {
+            return filesData.some(f => f.path === newPath);
+        }
+
+        // 安全路径清理（防止Markdown/纯文本格式破坏）
+        function sanitizePathForDisplay(path, forWarning = false) {
+            if (!forWarning) return path;
+            // 仅用于检测特殊字符
+            const dangerousChars = /[#*\[\]_~|>\\`]/;
+            return dangerousChars.test(path);
+        }
+
+        // 修改路径时的校验
+        function validateAndWarnPath(newPath) {
+            const dangerous = /[#*[\]_~|>`\\]/;
+            if (dangerous.test(newPath)) {
+                return confirm(`警告: 路径包含特殊字符 (如 # * [ ] _ ~ | > \\ \` )，可能影响最终输出的格式。\n是否仍然使用此路径？\n路径: ${newPath}`);
+            }
+            return true;
+        }
+
+        // 增强的代码块包裹 (解决内容中反引号截断)
+        function wrapCodeBlock(content, lang) {
+            // 找出内容中最长连续反引号个数
+            let maxBackticks = 0;
+            let current = 0;
+            for (let i = 0; i < content.length; i++) {
+                if (content[i] === '`') {
+                    current++;
+                    maxBackticks = Math.max(maxBackticks, current);
+                } else {
+                    current = 0;
+                }
+            }
+            const fenceLen = Math.max(3, maxBackticks + 1);
+            const fence = '`'.repeat(fenceLen);
+            return `${fence}${lang}\n${content}\n${fence}`;
+        }
+
+        // UI组件引用
         const fileListContainer = document.getElementById('fileListContainer');
         const fileStatsSpan = document.getElementById('fileStats');
         const addFilesBtn = document.getElementById('addFilesBtn');
@@ -439,16 +576,21 @@
         const retryAllFailedBtn = document.getElementById('retryAllFailedBtn');
         const packAndSaveBtn = document.getElementById('packAndSaveBtn');
         const outputFormatSelect = document.getElementById('outputFormat');
+        const customFilenameInput = document.getElementById('customFilename');
         const logPanel = document.getElementById('logPanel');
         const clearLogBtn = document.getElementById('clearLogBtn');
+        const autoScrollCheckbox = document.getElementById('autoScrollLogCheckbox');
 
+        // 日志（支持自动滚动开关）
         function addLog(message, isError = false) {
             const logDiv = document.createElement('div');
             logDiv.className = 'log-line';
             logDiv.style.color = isError ? '#fca5a5' : '#bbf7d0';
             logDiv.innerHTML = `[${new Date().toLocaleTimeString()}] ${message}`;
             logPanel.appendChild(logDiv);
-            logDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            if (autoScrollCheckbox.checked) {
+                logDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
             if (logPanel.children.length > 200) {
                 while (logPanel.children.length > 180) logPanel.removeChild(logPanel.firstChild);
             }
@@ -459,16 +601,30 @@
             addLog("日志面板已重置");
         }
 
-        function readFileAsText(file) {
+        // 读取文件并检测二进制
+        async function readFileAsTextWithCheck(file) {
             return new Promise((resolve) => {
                 const reader = new FileReader();
-                reader.onload = (e) => resolve({ content: e.target.result, error: null });
+                reader.onload = (e) => {
+                    const content = e.target.result;
+                    if (!isLikelyTextFile(file.name, content)) {
+                        resolve({ content: null, error: `文件疑似二进制或非文本格式 (扩展名: ${file.name.split('.').pop() || '无'})` });
+                    } else {
+                        resolve({ content: content, error: null });
+                    }
+                };
                 reader.onerror = () => resolve({ content: null, error: `读取失败: ${reader.error?.message || '未知错误'}` });
                 reader.readAsText(file, 'UTF-8');
             });
         }
 
-        function addFileEntry(path, content, status, errorMsg, sourceType, fileObj = null) {
+        // 添加文件入口 (支持去重)
+        function addFileEntry(path, content, status, errorMsg, sourceType, fileObj = null, originalRawPath = null) {
+            // 去重检查 (基于path)
+            if (isDuplicatePath(path)) {
+                addLog(`跳过重复文件: ${path} (已存在)`, true);
+                return false;
+            }
             filesData.push({
                 id: nextId++,
                 path: path,
@@ -476,18 +632,20 @@
                 status: status,
                 errorMsg: errorMsg,
                 sourceType: sourceType,
-                fileObj: fileObj
+                fileObj: fileObj,
+                originalRawPath: originalRawPath || path
             });
             renderFileList();
+            return true;
         }
 
         async function reparseFile(fileEntry) {
             if (!fileEntry.fileObj) {
-                addLog(`无法重新解析: 缺少原始文件对象`, true);
+                addLog(`无法重新解析: 缺少原始文件对象 (可能来自ZIP)`, true);
                 return false;
             }
             addLog(`重新读取: ${fileEntry.path}`);
-            const { content, error } = await readFileAsText(fileEntry.fileObj);
+            const { content, error } = await readFileAsTextWithCheck(fileEntry.fileObj);
             if (error || content === null) {
                 fileEntry.status = 'error';
                 fileEntry.errorMsg = error || '内容为空或无法解码';
@@ -519,22 +677,32 @@
             addLog(`重试完成: ${successCount}/${failedFiles.length} 个文件恢复成功`);
         }
 
+        // 处理文件列表 (支持大小警告)
         async function processFileList(fileList, basePathProvider, sourceType = 'file') {
             for (let i = 0; i < fileList.length; i++) {
                 const file = fileList[i];
                 let displayPath = basePathProvider(file, i);
+                // 大文件警告
+                if (file.size > LARGE_FILE_THRESHOLD) {
+                    const confirmLarge = confirm(`文件较大 (${(file.size/1024/1024).toFixed(2)} MB)，可能影响性能。是否继续添加？\n路径: ${displayPath}`);
+                    if (!confirmLarge) {
+                        addLog(`用户跳过超大文件: ${displayPath}`, true);
+                        continue;
+                    }
+                }
                 addLog(`尝试读取: ${displayPath}`);
-                const { content, error } = await readFileAsText(file);
+                const { content, error } = await readFileAsTextWithCheck(file);
                 if (error || content === null) {
-                    addFileEntry(displayPath, null, 'error', error || '无法解码为文本', sourceType, file);
+                    addFileEntry(displayPath, null, 'error', error || '无法解码为文本', sourceType, file, displayPath);
                     addLog(`读取失败: ${displayPath} , 原因: ${error || '二进制或编码错误'} , 已跳过`, true);
                 } else {
-                    addFileEntry(displayPath, content, 'success', '', sourceType, file);
+                    addFileEntry(displayPath, content, 'success', '', sourceType, file, displayPath);
                     addLog(`读取成功: ${displayPath} (${(content.length/1024).toFixed(1)} KB)`);
                 }
             }
         }
 
+        // ZIP处理 (支持大小警告及文件名乱码警告)
         async function onAddZip() {
             const input = document.createElement('input');
             input.type = 'file';
@@ -542,27 +710,46 @@
             input.onchange = async (e) => {
                 const zipFile = e.target.files[0];
                 if (!zipFile) return;
+                if (zipFile.size > LARGE_ZIP_THRESHOLD) {
+                    const confirmLarge = confirm(`ZIP文件较大 (${(zipFile.size/1024/1024).toFixed(2)} MB)，解压可能消耗较多内存，是否继续？`);
+                    if (!confirmLarge) {
+                        addLog(`用户取消超大ZIP: ${zipFile.name}`, true);
+                        return;
+                    }
+                }
                 addLog(`正在解析ZIP: ${zipFile.name} ...`);
                 try {
                     const arrayBuffer = await zipFile.arrayBuffer();
                     const zip = await JSZip.loadAsync(arrayBuffer);
                     let processedCount = 0;
+                    let hasPossibleGarbled = false;
                     const allEntries = Object.entries(zip.files);
+                    // 预先检测文件名是否可能乱码 (含�或非ASCII可疑)
+                    for (let [relativePath] of allEntries) {
+                        if (/[\uFFFD\u0000-\u001f]/.test(relativePath)) {
+                            hasPossibleGarbled = true;
+                            break;
+                        }
+                    }
+                    if (hasPossibleGarbled) {
+                        addLog(`⚠️ 检测到ZIP内部文件名可能乱码（含特殊替换字符），建议使用UTF-8编码重新打包ZIP以保证路径可读`, true);
+                    }
                     for (let [relativePath, zipEntry] of allEntries) {
                         if (zipEntry.dir) continue;
                         const displayPath = `[ZIP] ${relativePath}`;
                         addLog(`从ZIP读取: ${relativePath}`);
                         try {
                             const content = await zipEntry.async('string');
-                            if (content !== undefined && content !== null) {
-                                addFileEntry(displayPath, content, 'success', '', 'zip', null);
+                            if (!isLikelyTextFile(relativePath, content)) {
+                                addFileEntry(displayPath, null, 'error', `疑似二进制文件或编码错误`, 'zip', null, relativePath);
+                                addLog(`ZIP文件跳过(二进制): ${relativePath}`, true);
+                            } else {
+                                addFileEntry(displayPath, content, 'success', '', 'zip', null, relativePath);
                                 addLog(`ZIP提取成功: ${relativePath} (${(content.length/1024).toFixed(1)} KB)`);
                                 processedCount++;
-                            } else {
-                                throw new Error('内容为空');
                             }
                         } catch (err) {
-                            addFileEntry(displayPath, null, 'error', `解析异常: ${err.message}`, 'zip', null);
+                            addFileEntry(displayPath, null, 'error', `解析异常: ${err.message}`, 'zip', null, relativePath);
                             addLog(`ZIP文件读取失败: ${relativePath} , 错误: ${err.message} , 已跳过`, true);
                         }
                     }
@@ -572,6 +759,15 @@
                 }
             };
             input.click();
+        }
+
+        // 文件夹支持检测
+        const isFolderSupported = 'webkitdirectory' in document.createElement('input');
+        if (!isFolderSupported) {
+            addFolderBtn.style.display = 'none';
+            addLog("当前浏览器不支持「添加文件夹」功能，已隐藏该按钮", true);
+        } else {
+            addFolderBtn.style.display = 'inline-flex';
         }
 
         async function onAddFiles() {
@@ -588,6 +784,10 @@
         }
 
         async function onAddFolder() {
+            if (!isFolderSupported) {
+                addLog("不支持文件夹上传", true);
+                return;
+            }
             const input = document.createElement('input');
             input.type = 'file';
             input.webkitdirectory = true;
@@ -617,7 +817,16 @@
             if (!file) return;
             const newPath = prompt("修改文件路径 (可包含目录结构，方便AI识别):", file.path);
             if (newPath && newPath.trim() !== "") {
-                file.path = newPath.trim();
+                const trimmed = newPath.trim();
+                if (isDuplicatePath(trimmed) && trimmed !== file.path) {
+                    addLog(`修改失败: 路径 "${trimmed}" 已存在`, true);
+                    return;
+                }
+                if (!validateAndWarnPath(trimmed)) {
+                    addLog(`路径修改已取消: ${trimmed}`, true);
+                    return;
+                }
+                file.path = trimmed;
                 renderFileList();
                 addLog(`已修改路径: ${file.path}`);
             }
@@ -643,7 +852,6 @@
             for (let item of filesData) {
                 let statusClass = item.status === 'success' ? 'status-success' : 'status-error';
                 let statusText = item.status === 'success' ? '成功' : `失败: ${item.errorMsg || '未知错误'}`;
-
                 html += `
                     <div class="file-item" data-id="${item.id}">
                         <div class="file-info">
@@ -661,7 +869,6 @@
                 `;
             }
             fileListContainer.innerHTML = html;
-
             document.querySelectorAll('.rename-btn').forEach(btn => {
                 btn.addEventListener('click', (e) => {
                     const id = parseInt(btn.getAttribute('data-id'));
@@ -676,106 +883,58 @@
             });
         }
 
-        function escapeHtml(str) {
-            return str.replace(/[&<>]/g, function(m) {
-                if (m === '&') return '&amp;';
-                if (m === '<') return '&lt;';
-                if (m === '>') return '&gt;';
-                return m;
-            });
-        }
+        function escapeHtml(str) { return str.replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m])); }
+        function escapeMarkdown(text) { return text.replace(/([#`*_\[\]()~>|\\])/g, '\\$1'); }
 
-        // 生成最终打包内容：成功文件输出完整内容，失败文件仅输出路径和失败提示
         function generateMergedContent(outputType) {
             const successFiles = filesData.filter(f => f.status === 'success' && f.content !== null);
             const failedFiles = filesData.filter(f => f.status === 'error');
-            
             let parts = [];
-            // 头部简短AI提示
-            const toolNote = outputType === 'md' 
-                ? `> **工具提示**：本文档由「文本聚合打包器」生成。部分文件可能读取失败（详见下文），AI若需要原始文件可向用户索取。\n\n`
-                : `[工具提示] 本文档由「文本聚合打包器」生成。部分文件可能读取失败，AI若需要原始文件可向用户索取。\n\n`;
-            
-            const header = outputType === 'md'
-                ? `# 文本聚合包 - 生成于 ${new Date().toLocaleString()}\n# 有效文件: ${successFiles.length} | 失败文件: ${failedFiles.length}\n\n${toolNote}`
-                : `================== 文本聚合包 ==================\n生成时间: ${new Date().toLocaleString()}\n有效文件数: ${successFiles.length} | 失败文件数: ${failedFiles.length}\n\n${toolNote}`;
+            const toolNote = outputType === 'md' ? `> **工具提示**：本文档由「文本聚合打包器」生成。部分文件可能读取失败（详见下文），AI若需要原始文件可向用户索取。\n\n` : `[工具提示] 本文档由「文本聚合打包器」生成。部分文件可能读取失败，AI若需要原始文件可向用户索取。\n\n`;
+            const header = outputType === 'md' ? `# 文本聚合包 - 生成于 ${new Date().toLocaleString()}\n# 有效文件: ${successFiles.length} | 失败文件: ${failedFiles.length}\n\n${toolNote}` : `================== 文本聚合包 ==================\n生成时间: ${new Date().toLocaleString()}\n有效文件数: ${successFiles.length} | 失败文件数: ${failedFiles.length}\n\n${toolNote}`;
             parts.push(header);
-
-            // 输出成功文件
             for (let file of successFiles) {
-                const sep = outputType === 'md' ? `---` : `========================================`;
                 if (outputType === 'md') {
                     parts.push(`## 文件: ${escapeMarkdown(file.path)}\n`);
-                    parts.push(`> 路径: \`${file.path}\`\n`);
+                    parts.push(`> 路径: \`${escapeMarkdown(file.path)}\`\n`);
                     let lang = '';
                     const match = file.path.match(/\.([a-zA-Z0-9]+)$/);
-                    if (match) {
-                        const ext = match[1].toLowerCase();
-                        if (['js','ts','jsx','tsx','json','html','css','xml','yaml','yml','sql','py','java','c','cpp','sh','md'].includes(ext)) lang = ext;
-                        else if (ext === 'txt') lang = 'text';
-                    }
-                    parts.push(`\`\`\`${lang}\n${file.content}\n\`\`\`\n`);
+                    if (match) { const ext = match[1].toLowerCase(); if (TEXT_EXTENSIONS.has(ext)) lang = ext; else if (ext === 'txt') lang = 'text'; }
+                    parts.push(`${wrapCodeBlock(file.content, lang)}\n`);
                 } else {
-                    parts.push(`${sep}\n`);
-                    parts.push(`[文件路径]: ${file.path}\n`);
-                    const dir = file.path.substring(0, file.path.lastIndexOf('/') !== -1 ? file.path.lastIndexOf('/') : 0) || '根目录';
-                    parts.push(`[所在目录]: ${dir}\n`);
-                    parts.push(`[文件内容]:\n${file.content}\n`);
-                    parts.push(`\n${sep} 文件结束 ${sep}\n\n`);
+                    parts.push(`========================================\n[文件路径]: ${file.path}\n[所在目录]: ${file.path.substring(0, file.path.lastIndexOf('/') !== -1 ? file.path.lastIndexOf('/') : 0) || '根目录'}\n[文件内容]:\n${file.content}\n\n======================================== 文件结束 ========================================\n\n`);
                 }
             }
-
-            // 输出失败文件（仅路径和错误说明，无内容）
             if (failedFiles.length > 0) {
                 const failSep = outputType === 'md' ? `## 读取失败的文件` : `================== 读取失败的文件 ==================`;
                 parts.push(failSep);
                 for (let file of failedFiles) {
                     if (outputType === 'md') {
-                        parts.push(`### ❌ ${escapeMarkdown(file.path)}\n`);
-                        parts.push(`- **状态**: 读取失败\n`);
-                        parts.push(`- **原因**: ${escapeMarkdown(file.errorMsg || '未知错误')}\n`);
-                        parts.push(`- **建议**: AI如需此文件内容，可联系用户提供原始文件。\n`);
+                        parts.push(`### ❌ ${escapeMarkdown(file.path)}\n- **状态**: 读取失败\n- **原因**: ${escapeMarkdown(file.errorMsg || '未知错误')}\n- **建议**: AI如需此文件内容，可联系用户提供原始文件。\n`);
                     } else {
-                        parts.push(`\n[失败文件路径]: ${file.path}`);
-                        parts.push(`[失败原因]: ${file.errorMsg || '未知错误'}`);
-                        parts.push(`[建议]: AI如需此文件内容，可联系用户提供原始文件。`);
-                        parts.push(`----------------------------------------`);
+                        parts.push(`\n[失败文件路径]: ${file.path}\n[失败原因]: ${file.errorMsg || '未知错误'}\n[建议]: AI如需此文件内容，可联系用户提供原始文件。\n----------------------------------------`);
                     }
                 }
-                parts.push(outputType === 'md' ? `\n` : `\n`);
             }
-
-            if (outputType === 'md') {
-                parts.push(`\n---\n*由文本打包工具自动生成 | 失败文件已标注，可按需向用户索取*`);
-            } else {
-                parts.push(`================== 打包结束 ==================`);
-            }
+            parts.push(outputType === 'md' ? `\n---\n*由文本打包工具自动生成 | 失败文件已标注，可按需向用户索取*` : `\n================== 打包结束 ==================`);
             return parts.join('\n');
         }
 
-        function escapeMarkdown(text) {
-            return text.replace(/([#`*_\[\]()~>|\\])/g, '\\$1');
-        }
-
+        function sanitizeFilename(name) { return name.replace(/[\\/:*?"<>|]/g, '_').trim() || 'ai_context_pack'; }
         async function packAndSave() {
-            if (filesData.length === 0) {
-                addLog(`没有文件，无法打包`, true);
-                return;
-            }
+            if (filesData.length === 0) { addLog(`没有文件，无法打包`, true); return; }
             const successCount = filesData.filter(f => f.status === 'success').length;
-            const failedCount = filesData.filter(f => f.status === 'error').length;
-            if (successCount === 0 && failedCount === 0) {
-                addLog(`没有有效文件`, true);
-                return;
-            }
+            if (successCount === 0 && filesData.filter(f => f.status === 'error').length === 0) { addLog(`没有有效文件`, true); return; }
             const format = outputFormatSelect.value;
-            addLog(`开始打包，格式: ${format.toUpperCase()}, 成功:${successCount}, 失败:${failedCount}`);
+            let baseName = customFilenameInput.value.trim();
+            if (baseName === "") baseName = "ai_context_pack";
+            baseName = sanitizeFilename(baseName);
+            const timestamp = new Date().toISOString().slice(0,19).replace(/:/g, '-');
+            const filename = `${baseName}_${timestamp}.${format}`;
+            addLog(`开始打包，格式: ${format.toUpperCase()}, 成功:${successCount}, 输出文件名: ${filename}`);
             const merged = generateMergedContent(format);
-            if (!merged) return;
             const blob = new Blob([merged], { type: 'text/plain;charset=utf-8' });
             const link = document.createElement('a');
-            const timestamp = new Date().toISOString().slice(0,19).replace(/:/g, '-');
-            const filename = `ai_context_pack_${timestamp}.${format}`;
             link.href = URL.createObjectURL(blob);
             link.download = filename;
             link.click();
@@ -790,8 +949,8 @@
         retryAllFailedBtn.addEventListener('click', retryAllFailed);
         packAndSaveBtn.addEventListener('click', packAndSave);
         clearLogBtn.addEventListener('click', clearLog);
-
-        addLog("工具已启动 | 默认尝试所有文件作为文本读取 | 失败的文件可点击「重试失败文件」重新解析 | 打包时失败文件仅保留路径提示");
+        if (!isFolderSupported) addLog("提示: 浏览器不支持文件夹上传，已隐藏对应按钮。", true);
+        addLog("工具已启动");
     })();
 </script>
 </body>
